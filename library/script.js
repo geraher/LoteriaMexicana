@@ -1,5 +1,8 @@
 var application = angular.module("myApp", []);
 
+// Declare audioPlayer globally or at least outside AnunciarCarta
+var audioPlayer = document.getElementById("cardAudio");
+
 // Start controller
 application.controller("myCtrl", function ($scope, $http, $window, $timeout, $document) {
 	//variables
@@ -77,16 +80,28 @@ application.controller("myCtrl", function ($scope, $http, $window, $timeout, $do
 
 
 	function AnunciarCarta(_carta) {
-		var x = document.createElement("AUDIO");
-	  	x.setAttribute("id", "myVideo");
-	  	x.setAttribute("controls", "controls");		  
-	  	var y = document.createElement("SOURCE");
-	  	y.setAttribute("src", "audio/"+$scope.vozselected.label+"/"+_carta+".m4a");
-	  	y.setAttribute("type", "audio/mp4");
-	  	x.appendChild(y);
-	  	// Set the autoplay property:
-	  	x.autoplay = true;
-	  	document.body.appendChild(x);
+		if (!audioPlayer) {
+			audioPlayer = document.createElement("AUDIO");
+			audioPlayer.setAttribute("id", "cardAudio");
+			// Do not add controls: x.setAttribute("controls", "controls"); 
+			document.body.appendChild(audioPlayer);
+		}
+		
+		var audioSrc = "audio/" + $scope.vozselected.label + "/" + _carta + ".m4a";
+		audioPlayer.setAttribute("src", audioSrc);
+		audioPlayer.load(); // Load the new source
+		
+		// Attempt to play the audio
+		var playPromise = audioPlayer.play();
+
+		if (playPromise !== undefined) {
+			playPromise.then(_ => {
+				// Autoplay started!
+			}).catch(error => {
+				// Autoplay was prevented.
+				console.error("Audio playback failed:", error);
+			});
+		}
 	}
 
 
