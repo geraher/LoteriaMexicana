@@ -51,6 +51,8 @@
         
         <div class="col-md-12 text-center pt-2" style="margin-top: 10px;" ng-show="!start">
             <button id="btnIniciar" class="btn btn-success" ng-click="refresh()" onclick=""><span class="glyphicon glyphicon-refresh"></span> Nuevo juego</button>
+            <button type="button" class="btn btn-warning" ng-click="pauseGame()" ng-disabled="isPaused"><span class="glyphicon glyphicon-pause"></span> Pausar</button>
+            <button type="button" class="btn btn-primary" ng-click="resumeGame()" ng-disabled="!isPaused"><span class="glyphicon glyphicon-play"></span> Reanudar</button>
         </div>
         <div class="col-md-12" style="margin-top: 10px;" ng-show="start">
             <div class="col-md-4"></div>
@@ -85,4 +87,3 @@
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.7.9/angular.min.js"></script>
 <script src="library/script.js"></script>
-
