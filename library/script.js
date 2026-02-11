@@ -31,52 +31,144 @@ application.controller("myCtrl", function ($scope, $http, $window, $timeout, $do
 
 	$scope.vozselected = $scope.voces[0];
 
-	// In $scope.iniciar, update the card shuffling loop to check the flag
-	$scope.iniciar = function (){
-		AnunciarCarta(0);
-		$scope.start=false;
-		$scope.AddListCards=[];
-		barajear();
-		var i = 0;
-		var c = 1;
-		var showcards;
-		setTimeout(function() {
-			if ($scope.tiempopasar === 4000) {
-				var playNext = function () {
-					if (i > cards || refreshTriggered) return;
-					AnunciarCarta(arr[i], function () {
-						i++;
-						playNext();
-					});
-					var src="cartas/"+arr[i]+".jpg";
-					$scope.AddListCards.push({ Imagen: src, num: c});
-					$scope.Card=$scope.AddListCards[i].Imagen;
-					$scope.$apply();
-					c++;
-				};
-				playNext();
-			} else {
-				while (i <= cards) {
-					(function(i) {
-						setTimeout(function() {
-							// Stop shuffling if refresh was triggered
-							if (refreshTriggered) return;
-							AnunciarCarta(arr[i]);
-							var src="cartas/"+arr[i]+".jpg";
-							$scope.AddListCards.push({ Imagen: src, num: c});
-							$scope.Card=$scope.AddListCards[i].Imagen;
-							$scope.$apply();						
-							c++;
-						}, $scope.tiempopasar * i)
-					})(i++)
-				}
-			}
-		},2300*($scope.tiempopasar/1400))
+	var currentCardIndex = 0;
+	var currentCardNumber = 1;
+	var gameRunning = false;
+	var waitTimer = null;
+	var waitDelay = 0;
+	var waitStartedAt = 0;
+	var waitRemaining = 0;
+	var waitingForNextCard = false;
+	var pausedDuringAudio = false;
+
+	function clearWaitTimer() {
+		if (waitTimer) {
+			clearTimeout(waitTimer);
+			waitTimer = null;
+		}
+		waitDelay = 0;
+		waitStartedAt = 0;
+		waitRemaining = 0;
+		waitingForNextCard = false;
 	}
 
-	// Modify $scope.refresh to set the flag and play audio before reload
+	function getPostReadDelay() {
+		// iOS buffer for normal and rapido to prevent clipping at the end.
+		return $scope.tiempopasar === 4000 ? 0 : 250;
+	}
+
+	function scheduleNextCard(delay) {
+		if (!gameRunning || refreshTriggered || $scope.isPaused) {
+			return;
+		}
+		waitingForNextCard = true;
+		waitDelay = delay;
+		waitStartedAt = Date.now();
+		waitRemaining = delay;
+		waitTimer = setTimeout(function() {
+			waitingForNextCard = false;
+			waitTimer = null;
+			playNextCard();
+		}, delay);
+	}
+
+	function finishGame() {
+		gameRunning = false;
+		clearWaitTimer();
+	}
+
+	function playNextCard() {
+		if (!gameRunning || refreshTriggered || $scope.isPaused) {
+			return;
+		}
+		if (currentCardIndex >= arr.length) {
+			finishGame();
+			return;
+		}
+
+		var card = arr[currentCardIndex];
+		var src = "cartas/" + card + ".jpg";
+		$scope.AddListCards.push({ Imagen: src, num: currentCardNumber});
+		$scope.Card = src;
+		$scope.$applyAsync();
+
+		currentCardIndex++;
+		currentCardNumber++;
+
+		AnunciarCarta(card, function() {
+			scheduleNextCard(getPostReadDelay());
+		});
+	}
+
+	$scope.iniciar = function (){
+		refreshTriggered = false;
+		gameRunning = true;
+		$scope.start=false;
+		$scope.isPaused=false;
+		$scope.AddListCards=[];
+		$scope.Card="cartas/"+0+".PNG";
+		barajear();
+
+		currentCardIndex = 0;
+		currentCardNumber = 1;
+		clearWaitTimer();
+		pausedDuringAudio = false;
+
+		// Start with card 0 and continue after it finishes, using real audio length.
+		AnunciarCarta(0, function() {
+			scheduleNextCard(getPostReadDelay());
+		});
+	}
+
+	$scope.pauseGame = function () {
+		if (!gameRunning || $scope.isPaused) {
+			return;
+		}
+		$scope.isPaused = true;
+
+		if (waitingForNextCard && waitTimer) {
+			var elapsed = Date.now() - waitStartedAt;
+			waitRemaining = Math.max(0, waitDelay - elapsed);
+			clearWaitTimer();
+		}
+
+		pausedDuringAudio = false;
+		if (audioPlayer && !audioPlayer.paused && !audioPlayer.ended) {
+			audioPlayer.pause();
+			pausedDuringAudio = true;
+		}
+	}
+
+	$scope.resumeGame = function () {
+		if (!gameRunning || !$scope.isPaused) {
+			return;
+		}
+		$scope.isPaused = false;
+
+		if (pausedDuringAudio && audioPlayer) {
+			audioPlayer.play().catch(function(error) {
+				console.error("Audio playback failed:", error);
+			});
+			pausedDuringAudio = false;
+			return;
+		}
+
+		if (waitRemaining > 0) {
+			scheduleNextCard(waitRemaining);
+			waitRemaining = 0;
+			return;
+		}
+
+		playNextCard();
+	}
+
 	$scope.refresh = function () {
 		refreshTriggered = true;
+		gameRunning = false;
+		clearWaitTimer();
+		if (audioPlayer) {
+			audioPlayer.pause();
+		}
 		setTimeout(function() {
 			var audio = new Audio("audio/marco/55.m4a");
 			audio.play().catch(function(e) {
@@ -140,7 +232,7 @@ application.controller("myCtrl", function ($scope, $http, $window, $timeout, $do
 						return;
 					}
 					if (typeof onComplete === "function") {
-						setTimeout(onComplete, 1000);
+						onComplete();
 					}
 				};
 				audioPlayer.onerror = function () {
@@ -152,21 +244,26 @@ application.controller("myCtrl", function ($scope, $http, $window, $timeout, $do
 						return;
 					}
 					if (typeof onComplete === "function") {
-						setTimeout(onComplete, 1000);
+						onComplete();
 					}
 				};
 				playSrc(audioSrc).catch(function(error) {
 					console.error("Audio playback failed:", error);
 				});
 			} else {
-				audioPlayer.onended = null;
-				audioPlayer.onerror = null;
+				audioPlayer.onended = function () {
+					if (typeof onComplete === "function") {
+						onComplete();
+					}
+				};
+				audioPlayer.onerror = function () {
+					if (typeof onComplete === "function") {
+						onComplete();
+					}
+				};
 				playSrc(audioSrc).catch(function(error) {
 					console.error("Audio playback failed:", error);
 				});
-				if (typeof onComplete === "function") {
-					onComplete();
-				}
 			}
 		}
 
